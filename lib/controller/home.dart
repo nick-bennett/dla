@@ -1,16 +1,12 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+
+import '../viewmodel/lattice_viewmodel.dart';
 
 class DlaHomePage extends StatefulWidget {
   const DlaHomePage({Key? key, required this.title}) : super(key: key);
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
 
   final String title;
 
@@ -19,50 +15,129 @@ class DlaHomePage extends StatefulWidget {
 }
 
 class _DlaHomePageState extends State<DlaHomePage> {
+  _DlaHomePageState() : _viewModel = LatticeViewModel() {
+    _listenToRunningStream();
+    _listenToSizeStream();
+    _listenToExceptionStream();
+  }
+
+  final LatticeViewModel _viewModel;
+  late final Stream<bool> _runningStream;
+  late final Stream<int> _sizeStream;
+  late final Stream<Exception> _exceptionStream;
+
   bool _running = false;
 
-  void _toggleRunning() {
-    setState(() => _running = !_running);
+  void _listenToRunningStream() {
+    _runningStream = _viewModel.runningStream;
+    _runningStream.listen((running) {
+      if (running) {
+        _resume();
+      } else {
+        _pause();
+      }
+    });
+  }
+
+  void _listenToSizeStream() {
+    _sizeStream = _viewModel.sizeStream;
+    _sizeStream.listen(
+      (size) => _viewModel.seed(Point<int>(size >> 1, size >> 1)),
+    );
+  }
+
+  void _listenToExceptionStream() {
+    _exceptionStream = _viewModel.exceptionStream;
+    _exceptionStream.listen(
+      (exception) => Fluttertoast.showToast(
+        msg: exception.toString(),
+        toastLength: Toast.LENGTH_LONG,
+      ),
+    );
+  }
+
+  void _resume() {
+    setState(() => _running = true);
+  }
+
+  void _pause() {
+    setState(() => _running = false);
+  }
+
+  List<IconButton> _actions() {
+    List<IconButton> icons = [];
+    if (_running) {
+      icons.add(IconButton(
+        icon: const Icon(Icons.pause),
+        onPressed: _viewModel.pause,
+        tooltip: 'Pause accumulation of the aggregate',
+      ));
+    } else {
+      icons.addAll([
+        IconButton(
+          icon: const Icon(Icons.restart_alt),
+          onPressed: _viewModel.reset,
+          tooltip: 'Clear aggregate & seed points',
+        ),
+        IconButton(
+          icon: const Icon(Icons.skip_next),
+          onPressed: _viewModel.accumulate,
+          tooltip: 'Add a single particle to the aggregate',
+        ),
+        IconButton(
+          icon: const Icon(Icons.play_arrow),
+          onPressed: _viewModel.resume,
+          tooltip: 'Begin or resume accumulation of the aggregate',
+        ),
+      ]);
+    }
+    return icons;
+  }
+
+  Widget _body() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          StreamBuilder<Point<int>>(
+            stream: _viewModel.pointStream,
+            builder: _buildPointDisplay,
+          ),
+          StreamBuilder<int>(
+            stream: _viewModel.massStream,
+            builder: _buildMassDisplay,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMassDisplay(context, event) {
+    if (event.hasData) {
+      int mass = event.data as int;
+      return Text('Mass = $mass');
+    } else {
+      return const Text('No data');
+    }
+  }
+
+  Widget _buildPointDisplay(context, event) {
+    if (event.hasData) {
+      Point p = event.data as Point;
+      return Text('(${p.x}, ${p.y}) added to aggregate.');
+    } else {
+      return const Text('No data');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
         title: Text(widget.title),
-        actions: [
-          if (!_running)
-            IconButton(
-              icon: const Icon(Icons.restart_alt),
-              onPressed: () {},
-              tooltip: 'Clear aggregate & seed points',
-            ),
-          if (!_running)
-            IconButton(
-                icon: const Icon(Icons.play_arrow),
-                onPressed: _toggleRunning,
-                tooltip: 'Begin or resume accumulation of the aggregate'
-            )
-          else
-            IconButton(
-                icon: const Icon(Icons.pause),
-                onPressed: _toggleRunning,
-                tooltip: 'Pause accumulation of the aggregate'
-            ),
-        ],
+        actions: _actions(),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-      ),
+      body: _body(),
     );
   }
 }
